@@ -81,7 +81,18 @@ const postSchima = new Schema<IPost>({
 }, {
     timestamps: true,
     strictQuery: true,
+    toJSON:{virtuals:true},
+    toObject:{virtuals:true}
 });
+
+
+postSchima.virtual("lastComment",{
+    localField:"_id",
+    foreignField:"postId",
+    ref:"Comment",
+    justOne:true,
+    
+})
 
 postSchima.pre("save",
 
@@ -134,6 +145,5 @@ postSchima.pre(["updateOne", "findOne", "find"], function (next) {
     }
     next()
 });
-
 
 export const PostModel = models.Post || model("post", postSchima);

@@ -8,6 +8,7 @@ import { I_CreatePostInputs } from "./dto/posts.dto";
 import { v4 as uuid } from "uuid";
 import { deleteFiles, deleteFolderByPrefix, uploadFiles } from "../../utils/multer/s3.config";
 import { Types } from "mongoose";
+import { CommentFlagEnum } from "../../DataBase/models";
 
 export const postAvailability = (req: Request) => {
     return [
@@ -238,6 +239,24 @@ export class PostService {
             filter: {
                 $or: postAvailability(req)
             },
+            options: {
+                populate: [{
+                    path: "lastComment",
+                    match: { flag: CommentFlagEnum.comment },
+                    options: {
+                        sort: { createdAt: -1 },
+                        select: "-id"
+                    }, populate: [{
+                        path: "lastReply",
+                        match: { flag: CommentFlagEnum.reply },
+                        options: {
+                            sort: { createdAt: -1 }
+                        },
+                        select: "-id"
+                    }]
+                }
+                ]
+            },
             page: page,
             limit
         });
@@ -255,20 +274,41 @@ export class PostService {
 
     getPost = async (req: Request, res: Response): Promise<Response> => {
 
-        const post = await this.postModel.findOne({
+
+
+        const post = await this.postModel.find({
             filter: {
-                _id: req.params.postId
+                _id: req.params.postId,
+                $or: postAvailability(req)
+            },
+            options: {
+                populate: [{
+                    path: "lastComment",
+                    match: { flag: CommentFlagEnum.comment },
+                    options: {
+                        sort: { createdAt: -1 },
+                        select: "-id"
+                    }, populate: [{
+                        path: "lastReply",
+                        match: { flag: CommentFlagEnum.reply },
+                        options: {
+                            sort: { createdAt: -1 }
+                        },
+                        select: "-id"
+                    }]
+                }
+                ]
             }
         });
+
         if (!post) {
             throw new NotFoundException("Post Not Found!");
         }
 
         return succsesResponse({
             res,
-            data: {
+            data:
                 post
-            }
         });
 
     }

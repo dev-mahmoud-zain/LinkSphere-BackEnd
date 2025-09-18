@@ -6,10 +6,9 @@ export enum CommentFlagEnum {
     reply = "reply"
 }
 
-
 export interface IComment {
     flag: CommentFlagEnum;
-    createdBy: Types.ObjectId ;
+    createdBy: Types.ObjectId;
     postId: Types.ObjectId | Partial<IPost>;
     commentId?: Types.ObjectId;
 
@@ -32,10 +31,10 @@ export interface IComment {
 export type HCommentDucment = HydratedDocument<IComment>;
 
 const commentSchima = new Schema<IComment>({
-    flag :{ type: String, enum: CommentFlagEnum, default: CommentFlagEnum.comment },
+    flag: { type: String, enum: CommentFlagEnum, default: CommentFlagEnum.comment },
     createdBy: { type: Schema.Types.ObjectId, ref: "User", required: true },
-    postId : { type: Schema.Types.ObjectId, ref: "Post", required: true },
-    commentId : { type: Schema.Types.ObjectId, ref: "Comment" },
+    postId: { type: Schema.Types.ObjectId, ref: "Post", required: true },
+    commentId: { type: Schema.Types.ObjectId, ref: "Comment" },
 
     content: {
         type: String, required: function () {
@@ -63,7 +62,16 @@ const commentSchima = new Schema<IComment>({
 }, {
     timestamps: true,
     strictQuery: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true },
 });
+
+commentSchima.virtual("lastReply", {
+    localField: "_id",
+    foreignField: "commentId",
+    ref: "Comment",
+    justOne: true,
+})
 
 commentSchima.pre(["updateOne", "findOne", "find"], function (next) {
     const query = this.getQuery();
@@ -75,6 +83,5 @@ commentSchima.pre(["updateOne", "findOne", "find"], function (next) {
     }
     next()
 });
-
 
 export const CommentModel = models.Comment || model("Comment", commentSchima);
