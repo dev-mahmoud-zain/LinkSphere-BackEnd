@@ -8,8 +8,6 @@ import { endPoints } from "./users.authorization";
 
 const router = Router();
 
-
-
 // ============================ Profile Management =============================
 
 router.get("/profile",
@@ -67,7 +65,16 @@ router.delete("/freez/{:userId}",
     validationMiddleware(usersValidation.freezAccount),
     usersService.freezAccount);
 
-router.delete("/delete/{:userId}",
+router.patch("/un-freez/:userId/admin",
+    authorizationMiddeware(endPoints.unFreezAccountByAdmin),
+    validationMiddleware(usersValidation.unFreezAccountByAdmin),
+    usersService.unFreezAccountByAdmin);
+
+router.patch("/un-freez/me",
+    validationMiddleware(usersValidation.unFreezAccountByAccountAuther),
+    usersService.unFreezAccountByAccountAuther);
+
+router.delete("/delete/:userId",
     authorizationMiddeware(endPoints.freezAccount),
     validationMiddleware(usersValidation.deleteAccount),
     usersService.deleteAccount);

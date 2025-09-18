@@ -1,5 +1,4 @@
 import { Response, Request } from "express"
-import { HUserDoucment, UserModel } from "../../DataBase/models/user.model";
 import {
     deleteFile,
     deleteFiles,
@@ -9,20 +8,65 @@ import {
     uploadFiles
 } from "../../utils/multer/s3.config";
 import { ApplicationException, BadRequestException, NotFoundException } from "../../utils/response/error.response";
-import { UserRepository } from "../../DataBase/repository";
+import { CommentRepository, PostRepository, UserRepository } from "../../DataBase/repository";
 import { JwtPayload } from "jsonwebtoken";
 import { succsesResponse } from "../../utils/response/succses.response";
 import { IChangePassword } from "../001-auth/dto/auth.dto";
 import { compareHash, generateHash } from "../../utils/security/hash.security";
 import { generateOTP } from "../../utils/security/OTP";
 import { emailEvent } from "../../utils/email/email.events";
+import { CommentModel, PostModel, HUserDoucment, UserModel } from "../../DataBase/models";
+import { Types } from "mongoose";
 
 class UserServise {
 
-    private usermodel = new UserRepository(UserModel)
+    private userModel = new UserRepository(UserModel);
+    private postModel = new PostRepository(PostModel);
+    private commentModel = new CommentRepository(CommentModel);
+
+
+    private unfreezUser = async (userId :Types.ObjectId) => {
+
+        // Un UnFreez User
+        await this.userModel.findOneAndUpdate({
+            filter: {
+                _id: userId,
+            }, updateData: {
+                $unset: {
+                    freezedAt: "",
+                    freezedBy: ""
+                }
+            }
+        });
+
+        // UnFreez All Posts And Comments For User 
+        await this.postModel.updateMany({
+            createdBy: userId,
+            freezedAt: { $exists: true },
+            freezedBy: { $exists: true },
+        }, {
+            $unset: {
+                freezedAt: "",
+                freezedBy: ""
+            }
+        });
+
+        await this.commentModel.updateMany({
+            createdBy: userId,
+            freezedAt: { $exists: true },
+            freezedBy: { $exists: true },
+        }, {
+            $unset: {
+                freezedAt: "",
+                freezedBy: ""
+            }
+        });
+
+    }
+
     constructor() { }
 
-// ============================ Profile Management =============================
+    // ============================ Profile Management =============================
 
     profile = async (req: Request, res: Response): Promise<Response> => {
 
@@ -60,7 +104,7 @@ class UserServise {
             path: `users/${_id}`
         })
 
-        const update = await this.usermodel.updateOne({
+        const update = await this.userModel.updateOne({
             _id
         }, {
             picture: key
@@ -92,7 +136,7 @@ class UserServise {
             path: `users/${req.tokenDecoded?._id}/cover`
         })
 
-        await this.usermodel.updateOne({ _id }, {
+        await this.userModel.updateOne({ _id }, {
             coverImages: keys
         })
 
@@ -119,7 +163,7 @@ class UserServise {
             throw new ApplicationException("Faild To Delete Profile Picture");
         }
 
-        await this.usermodel.updateOne({ _id }, {
+        await this.userModel.updateOne({ _id }, {
             $unset: { picture: 1 }
         })
 
@@ -147,7 +191,7 @@ class UserServise {
             throw new ApplicationException("Faild To Delete Cover Images");
         }
 
-        await this.usermodel.updateOne({ _id }, {
+        await this.userModel.updateOne({ _id }, {
             $unset: { coverImages: 1 }
         })
 
@@ -158,7 +202,7 @@ class UserServise {
 
     }
 
-// ========================= User Information Updates ==========================
+    // ========================= User Information Updates ==========================
 
     updateBasicInfo = async (req: Request, res: Response): Promise<Response> => {
 
@@ -179,7 +223,7 @@ class UserServise {
             gender: req.body.validData.gender,
         };
 
-        const oldData = await this.usermodel.findOne({
+        const oldData = await this.userModel.findOne({
             filter: {
                 _id: req.user?._id,
             }
@@ -219,7 +263,7 @@ class UserServise {
             throw new BadRequestException("Invalid Update Data", { issues })
         }
 
-        const user = await this.usermodel.updateOne({
+        const user = await this.userModel.updateOne({
             _id: req.user?._id
         }, {
             $set: { ...data }
@@ -240,7 +284,7 @@ class UserServise {
 
         const newEmail = req.body.validData.email;
 
-        const emailExists = await this.usermodel.findOne({
+        const emailExists = await this.userModel.findOne({
             filter: { email: newEmail }
         })
 
@@ -250,7 +294,7 @@ class UserServise {
 
         const OTPCode = generateOTP();
 
-        await this.usermodel.updateOne({
+        await this.userModel.updateOne({
             _id: req.user?._id
         }, { updateEmailOTP: OTPCode, newEmail })
 
@@ -267,7 +311,7 @@ class UserServise {
 
         const OTP = req.body.validData.OTP;
 
-        const user = await this.usermodel.findOne({
+        const user = await this.userModel.findOne({
             filter: {
                 _id: req.user?._id,
             }, select: { updateEmailOTP: 1, updateEmailOTPExpiresAt: 1, newEmail: 1 }
@@ -285,7 +329,7 @@ class UserServise {
             throw new BadRequestException("OTP Code Time Expired");
         }
 
-        await this.usermodel.updateOne({
+        await this.userModel.updateOne({
             _id: req.user?._id,
         }, {
             $set: {
@@ -322,7 +366,7 @@ class UserServise {
         emailEvent.emit("changePassword", { to: email, OTPCode })
 
 
-        await this.usermodel.updateOne({
+        await this.userModel.updateOne({
             _id
         }, {
             password: await generateHash(newPassword)
@@ -339,7 +383,7 @@ class UserServise {
 
     }
 
-// ============================= Account Control ===============================
+    // ============================= Account Control ===============================
 
     freezAccount = async (req: Request, res: Response): Promise<Response> => {
 
@@ -351,7 +395,7 @@ class UserServise {
             userId = adminId;
         }
 
-        const freezedAccount = await this.usermodel.updateOne({
+        const freezedAccount = await this.userModel.updateOne({
             _id: userId,
             freezedAt: { $exists: false },
             freezedBy: { $exists: false },
@@ -371,11 +415,100 @@ class UserServise {
             throw new BadRequestException("Faild To Freez Account")
         }
 
+        // Freez All Posts And Comments For User 
+        await this.postModel.updateMany({
+            createdBy: userId,
+            freezedAt: { $exists: false },
+            freezedBy: { $exists: false },
+        }, {
+            $set: {
+                freezedAt: new Date(),
+                freezedBy: adminId,
+            },
+            $unset: {
+                restoredAt: 1,
+                restoredBy: 1
+            }
+        })
+
+        await this.commentModel.updateMany({
+            createdBy: userId,
+            freezedAt: { $exists: false },
+            freezedBy: { $exists: false },
+        }, {
+            $set: {
+                freezedAt: new Date(),
+                freezedBy: adminId,
+            },
+            $unset: {
+                restoredAt: 1,
+                restoredBy: 1
+            }
+        })
+
         return succsesResponse({
             res,
             info: "Account Freezed Succses",
         })
 
+    }
+
+    unFreezAccountByAdmin = async (req: Request, res: Response): Promise<Response> => {
+
+        const adminId = req.tokenDecoded?._id;
+        let { userId } = req.params as unknown as {
+            userId :Types.ObjectId
+        };
+
+        // UnFreezAccount
+        this.unfreezUser(userId)
+
+        return succsesResponse({
+            res,
+            info: "Account Unfreezed Succses",
+        })
+
+    }
+
+    unFreezAccountByAccountAuther = async (req: Request, res: Response): Promise<Response> => {
+
+        const { email, password } = req.body as unknown as {
+            email: string,
+            password: string
+        };
+
+        const user = await this.userModel.findOne({
+            filter: {
+                email,
+                pranoId: false
+            }
+        });
+
+        if (!user) {
+            throw new NotFoundException("User Not Found");
+        }
+
+        if (!await compareHash(password, user.password)) {
+            throw new BadRequestException("Invalid Email Or Password");
+        }
+
+        if (!user.freezedAt && !user.freezedBy) {
+            throw new BadRequestException("Account Is Not Freezed");
+        }
+
+        if (user.freezedBy &&
+            (user.freezedBy.toString() !== user._id.toString())) {
+            throw new BadRequestException("Account Is Freezed By Admin");
+        }
+
+        const userId = user._id as unknown as Types.ObjectId;
+
+       await this.unfreezUser(userId);
+
+        return succsesResponse({
+            res,
+            info: "Account Unfreezed Succses",
+        })
 
     }
 
@@ -383,7 +516,7 @@ class UserServise {
 
         const { userId } = req.params;
 
-        const user = await this.usermodel.findOne({ filter: { _id: userId } });
+        const user = await this.userModel.findOne({ filter: { _id: userId } });
 
 
         if (!user) {
@@ -394,7 +527,7 @@ class UserServise {
             throw new BadRequestException("Cannot Delete Not Freezed Account");
         }
 
-        const deletedUser = await this.usermodel.deleteOne({ _id: userId });
+        const deletedUser = await this.userModel.deleteOne({ _id: userId });
 
         if (!deletedUser.deletedCount) {
             throw new BadRequestException("Faild To Delete User")

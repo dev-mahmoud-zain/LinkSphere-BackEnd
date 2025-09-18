@@ -11,7 +11,6 @@ import {
     UpdateQuery,
     UpdateWriteOpResult
 } from "mongoose";
-import { NotFoundException } from "../../utils/response/error.response";
 import { MongooseUpdateQueryOptions } from "mongoose";
 
 export abstract class DataBaseRepository<TDocument> {
@@ -126,7 +125,7 @@ export abstract class DataBaseRepository<TDocument> {
             filter?: RootFilterQuery<TDocument>,
             updateData: UpdateQuery<TDocument>,
             options?: QueryOptions<TDocument> | null
-        }): Promise<HydratedDocument<TDocument>> {
+        }): Promise<HydratedDocument<TDocument> | null> {
 
         const updatedDoc = await this.model.findOneAndUpdate(
             filter,
@@ -136,10 +135,6 @@ export abstract class DataBaseRepository<TDocument> {
             },
             options
         ).exec();
-
-        if (!updatedDoc) {
-            throw new NotFoundException("Document not found");
-        }
 
         return updatedDoc;
     }

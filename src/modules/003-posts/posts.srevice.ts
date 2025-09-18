@@ -1,12 +1,12 @@
 import { Request, Response } from "express";
 import { succsesResponse } from "../../utils/response/succses.response";
 import { PostRepository, UserRepository } from "../../DataBase/repository";
-import { AvailabilityEnum, PostModel } from "../../DataBase/models/post.model";
+import { AvailabilityEnum, HPostDucment, PostModel } from "../../DataBase/models/post.model";
 import { UserModel } from "../../DataBase/models/user.model";
 import { BadRequestException, NotFoundException } from "../../utils/response/error.response";
 import { I_CreatePostInputs } from "./dto/posts.dto";
 import { v4 as uuid } from "uuid";
-import { deleteFiles, uploadFiles } from "../../utils/multer/s3.config";
+import { deleteFiles, deleteFolderByPrefix, uploadFiles } from "../../utils/multer/s3.config";
 import { Types } from "mongoose";
 
 export const postAvailability = (req: Request) => {
@@ -49,6 +49,7 @@ export class PostService {
         if (tags?.includes(userId)) {
             throw new BadRequestException("User Cannot Mention Himself")
         }
+
 
         let attachmentsKeys: string[] = [];
         const assetsFolderId = uuid();
@@ -244,7 +245,7 @@ export class PostService {
         return succsesResponse({
             res,
             data: {
-                 ...(page && posts.pagination),
+                ...(page && posts.pagination),
                 count: posts.data.length,
                 posts: posts.data,
             }
@@ -308,6 +309,36 @@ export class PostService {
         return succsesResponse({
             res,
             message
+        });
+    }
+
+    deletePost = async (req: Request, res: Response): Promise<Response> => {
+
+        const { postId } = req.params;
+        const userId = req.tokenDecoded?._id;
+
+        const post = await this.postModel.findOne({
+            filter: {
+                _id: postId,
+                createdBy: userId
+            }
+        }) as unknown as HPostDucment;
+
+        if (!post) {
+            throw new NotFoundException("Post Not Found Or No Authorized To Remove");
+        }
+
+        await this.postModel.deleteOne({
+            _id: postId
+        })
+
+        if (post.attachments) {
+            await deleteFolderByPrefix({ path: `users/${userId}/posts/${post.assetsFolderId}` });
+        }
+
+        return succsesResponse({
+            res,
+            message: "Post Deleted Succses"
         });
     }
 

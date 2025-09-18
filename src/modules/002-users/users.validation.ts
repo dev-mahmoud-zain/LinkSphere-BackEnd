@@ -7,6 +7,17 @@ export const freezAccount = {
     })
 }
 
+export const unFreezAccountByAdmin = {
+    params: freezAccount.params.extend({})
+}
+
+export const unFreezAccountByAccountAuther = {
+    body: z.strictObject({
+        email:generalFields.email,
+        password:generalFields.password
+    })
+}
+
 export const deleteAccount = {
     params: z.object({
         userId: generalFields.id

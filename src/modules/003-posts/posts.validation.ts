@@ -106,3 +106,7 @@ export const getPosts = {
 export const likePost = {
     params: getPost.params.extend({})
 }
+
+export const deletePost = {
+    params: getPost.params.extend({})
+}

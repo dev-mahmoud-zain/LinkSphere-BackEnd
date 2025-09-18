@@ -1,10 +1,11 @@
 import { Router } from "express";
 import { PostService } from "./posts.srevice";
-import { authenticationMiddeware } from "../../middlewares/authentication.middleware";
+import { authenticationMiddeware, authorizationMiddeware } from "../../middlewares/authentication.middleware";
 import { cloudFileUpload, fileValidation, StorageEnum } from "../../utils/multer/cloud.,multer";
 import { validationMiddleware } from "../../middlewares/validation.middleware";
 import *  as  validation from "./posts.validation";
 import { router as commentsRouter } from "../004-comments/index"
+import { endPoints } from "./posts.authorization";
 
 const postService = new PostService();
 
@@ -34,9 +35,16 @@ router.get("/{:postId}",
     validationMiddleware(validation.getPost),
     postService.getPost);
 
-router.post("/like/{:postId}",
+router.post("/like/:postId",
     authenticationMiddeware(),
     validationMiddleware(validation.likePost),
     postService.likePost);
+
+
+router.delete("/:postId",
+    authorizationMiddeware(endPoints.deletePost),
+    validationMiddleware(validation.deletePost),
+    postService.deletePost);
+
 
 export default router;

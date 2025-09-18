@@ -28,4 +28,9 @@ router.post("/:commentId/reply",
     validationMiddleware(validation.replyOnComment),
     comments.replyOnComment);
 
+
+router.post("/:commentId/like",
+    authenticationMiddeware(),
+    comments.likeComment);
+
 export default router;

@@ -9,10 +9,7 @@ import { deleteFile, uploadFile } from "../../utils/multer/s3.config";
 import { Types } from "mongoose";
 
 
-
-
 export class Comments {
-
 
     private userModel = new UserRepository(UserModel);
     private postModel = new PostRepository(PostModel);
@@ -20,19 +17,27 @@ export class Comments {
 
     constructor() { }
 
+    private postExists = async (postId: Types.ObjectId, req: Request): Promise<HPostDucment | Boolean> => {
+        const post = await this.postModel.findOne({
+            filter: {
+                _id: postId,
+                $or: postAvailability(req),
+                allowcomments: AllowCommentsEnum.allow
+            }
+        })
+        if (!post) {
+            return false;
+        }
+        return post;
+    }
+
     createComment = async (req: Request, res: Response): Promise<Response> => {
 
         const { tags, attachment }: I_CreateCommentInputs = req.body;
 
         const postId = req.params.postId as unknown as Types.ObjectId;
 
-        const post = await this.postModel.findOne({
-            filter: {
-                _id: postId,
-                allowcomments: AllowCommentsEnum.allow,
-                $or: postAvailability(req)
-            }
-        });
+        const post = await this.postExists(postId, req) as HPostDucment;
 
         if (!post) {
             throw new NotFoundException("Post Not Found Or Cannot Create Comment")
@@ -95,27 +100,20 @@ export class Comments {
             commentId: Types.ObjectId
         };
 
+        if (!await this.postExists(postId, req)) {
+            throw new BadRequestException("Post Not Found");
+        }
+
         const comment = await this.commentModel.findOne({
             filter: {
                 _id: commentId,
-            },
-            options: {
-                populate: [
-                    {
-                        path: "postId", match: {
-                            $or: postAvailability(req),
-                            allowcomments: AllowCommentsEnum.allow
-                        }
-                    }
-                ]
+                postId: postId
             }
         });
 
-
-        if (!comment?.postId) {
+        if (!comment) {
             throw new NotFoundException("Comment Not Found")
         }
-
 
         if (
             tags?.length && (await this.userModel.find({
@@ -168,10 +166,52 @@ export class Comments {
     }
 
     likeComment = async (req: Request, res: Response): Promise<Response> => {
+
+        const { postId, commentId } = req.params as unknown as {
+            postId: Types.ObjectId,
+            commentId: Types.ObjectId
+        };
+
+        const userId = req.user?._id  as unknown as Types.ObjectId  ;
+
+        if (!await this.postExists(postId, req)) {
+            throw new BadRequestException("Post Not Found");
+        }
+
+        const comment = await this.commentModel.findOne({
+            filter: {
+                _id: commentId,
+                postId
+            }
+        });
+
+        if (!comment) {
+            throw new NotFoundException("Comment Not Found!");
+        }
+
+        let updateData = {};
+        let message: string = "";
+
+        if (comment.likes?.includes(userId)) {
+            updateData = { $pull: { likes: userId } };
+            message = `${comment.flag === CommentFlagEnum.comment ? "Comment" :"Reply"} Unliked Succses`
+        } else {
+            updateData = { $addToSet: { likes: userId } };
+            message = `${comment.flag === CommentFlagEnum.comment ? "Comment" :"Reply"} Liked Succses`
+        }
+
+        await this.commentModel.findOneAndUpdate({
+            filter: {
+                _id: commentId
+            }, updateData
+        });
+
         return succsesResponse({
-            res, statusCode: 201,
-            info: "Comment Liked Succses",
+            res,
+            message
         });
     }
+
+
 
 }
