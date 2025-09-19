@@ -36,10 +36,13 @@ export const createComment = {
 
 }
 
-export const replyOnComment = {
-
+export const deleteComment = {
     params: createComment.params.extend({
         commentId: generalFields.id
     }),
+}
+
+export const replyOnComment = {
+    params: deleteComment.params.extend({}),
     body: createComment.body.extend({})
 }

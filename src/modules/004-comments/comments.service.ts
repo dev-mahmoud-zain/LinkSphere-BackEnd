@@ -172,7 +172,7 @@ export class Comments {
             commentId: Types.ObjectId
         };
 
-        const userId = req.user?._id  as unknown as Types.ObjectId  ;
+        const userId = req.user?._id as unknown as Types.ObjectId;
 
         if (!await this.postExists(postId, req)) {
             throw new BadRequestException("Post Not Found");
@@ -194,10 +194,10 @@ export class Comments {
 
         if (comment.likes?.includes(userId)) {
             updateData = { $pull: { likes: userId } };
-            message = `${comment.flag === CommentFlagEnum.comment ? "Comment" :"Reply"} Unliked Succses`
+            message = `${comment.flag === CommentFlagEnum.comment ? "Comment" : "Reply"} Unliked Succses`
         } else {
             updateData = { $addToSet: { likes: userId } };
-            message = `${comment.flag === CommentFlagEnum.comment ? "Comment" :"Reply"} Liked Succses`
+            message = `${comment.flag === CommentFlagEnum.comment ? "Comment" : "Reply"} Liked Succses`
         }
 
         await this.commentModel.findOneAndUpdate({
@@ -212,6 +212,40 @@ export class Comments {
         });
     }
 
+    deleteComment = async (req: Request, res: Response): Promise<Response> => {
 
+        const { postId, commentId } = req.params as unknown as {
+            postId: Types.ObjectId,
+            commentId: Types.ObjectId
+        };
+
+        const userId = req.user?._id as unknown as Types.ObjectId;
+
+        const comment = await this.commentModel.findOneAndDelete({
+            filter: {
+                _id: commentId,
+                postId,
+                createdBy:userId
+            }
+        })
+
+        if(!comment){
+            throw new BadRequestException("Comment Not Exist Or Not Authorized To Remove")
+        }
+
+        // Delete Related Replys
+        if(comment.flag === CommentFlagEnum.comment){
+            await this.commentModel.deleteMany({
+                postId,
+                commentId,
+                flag:CommentFlagEnum.reply,
+            })
+        }
+
+        return succsesResponse({
+            res,
+            message: "Comment Deleted Succses"
+        });
+    }
 
 }

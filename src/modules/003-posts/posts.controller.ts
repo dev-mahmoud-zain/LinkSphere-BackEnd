@@ -40,6 +40,15 @@ router.post("/like/:postId",
     validationMiddleware(validation.likePost),
     postService.likePost);
 
+router.delete("/freez/:postId",
+    authenticationMiddeware(),
+    validationMiddleware(validation.deletePost),
+    postService.freezPost);
+
+router.patch("/unfreez/:postId",
+    authenticationMiddeware(),
+    validationMiddleware(validation.deletePost),
+    postService.unFreezPost);
 
 router.delete("/:postId",
     authorizationMiddeware(endPoints.deletePost),

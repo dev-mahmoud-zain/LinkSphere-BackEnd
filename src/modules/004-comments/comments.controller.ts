@@ -33,4 +33,10 @@ router.post("/:commentId/like",
     authenticationMiddeware(),
     comments.likeComment);
 
+router.delete("/delete/:commentId",
+    authenticationMiddeware(),
+    validationMiddleware(validation.deleteComment),
+    comments.deleteComment);
+
+
 export default router;

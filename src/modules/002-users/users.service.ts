@@ -50,7 +50,7 @@ class UserServise {
             freezedAt: { $exists: true },
             freezedBy: { $exists: true },
         }, {
-            set: {
+            $set: {
                 restoredAt: new Date(),
                 restoredBy
             },

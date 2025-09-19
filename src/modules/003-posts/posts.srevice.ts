@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { succsesResponse } from "../../utils/response/succses.response";
-import { PostRepository, UserRepository } from "../../DataBase/repository";
+import { CommentRepository, PostRepository, UserRepository } from "../../DataBase/repository";
 import { AvailabilityEnum, HPostDucment, PostModel } from "../../DataBase/models/post.model";
 import { UserModel } from "../../DataBase/models/user.model";
 import { BadRequestException, NotFoundException } from "../../utils/response/error.response";
@@ -8,7 +8,7 @@ import { I_CreatePostInputs } from "./dto/posts.dto";
 import { v4 as uuid } from "uuid";
 import { deleteFiles, deleteFolderByPrefix, uploadFiles } from "../../utils/multer/s3.config";
 import { Types } from "mongoose";
-import { CommentFlagEnum } from "../../DataBase/models";
+import { CommentFlagEnum, CommentModel } from "../../DataBase/models";
 
 export const postAvailability = (req: Request) => {
     return [
@@ -30,6 +30,7 @@ export class PostService {
 
     private postModel = new PostRepository(PostModel);
     private userModel = new UserRepository(UserModel);
+    private commentModel = new CommentRepository(CommentModel);
 
     constructor() { }
 
@@ -349,6 +350,94 @@ export class PostService {
         return succsesResponse({
             res,
             message
+        });
+    }
+
+    freezPost = async (req: Request, res: Response): Promise<Response> => {
+
+        const { postId } = req.params;
+        const userId = req.tokenDecoded?._id;
+
+        const post = await this.postModel.findOneAndUpdate({
+            filter: {
+                _id: postId,
+                freezedAt: { $exists: false },
+                freezedBy: { $exists: false }
+            }, updateData: {
+                freezedAt: new Date(),
+                freezedBy: userId
+            }
+        });
+
+        if (!post) {
+            throw new NotFoundException("Post Not Found");
+        }
+
+
+        await this.commentModel.updateMany({
+            createdBy: userId,
+            freezedAt: { $exists: false },
+            freezedBy: { $exists: false },
+        }, {
+            $set: {
+                freezedAt: new Date(),
+                freezedBy :userId
+            }
+        });
+
+
+        return succsesResponse({
+            res,
+            message: "Post Freezed Succses"
+        });
+    }
+
+    unFreezPost = async (req: Request, res: Response): Promise<Response> => {
+
+        const { postId } = req.params;
+        const userId = req.tokenDecoded?._id;
+
+        const post = await this.postModel.findOneAndUpdate({
+            filter: {
+                _id: postId,
+                freezedAt: { $exists: true },
+                freezedBy: userId,
+                pranoId: false
+            }, updateData: {
+                $set: {
+                    restoredAt: new Date(),
+                    restoredBy: userId
+                },
+                $unset: {
+                    freezedAt: "",
+                    freezedBy: ""
+                }
+            }
+        });
+
+        if (!post) {
+            throw new NotFoundException("Post Not Found Or No Autherized To Unfreez");
+        }
+
+
+         await this.commentModel.updateMany({
+            createdBy: userId,
+            freezedAt: { $exists: true },
+            freezedBy: { $exists: true },
+        }, {
+            $set: {
+                restoredAt: new Date(),
+                restoredBy : userId
+            },
+            $unset: {
+                freezedAt: "",
+                freezedBy: ""
+            }
+        });
+
+        return succsesResponse({
+            res,
+            message: "Post Un Freezed Succses"
         });
     }
 
