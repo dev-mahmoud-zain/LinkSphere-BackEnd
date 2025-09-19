@@ -19,6 +19,15 @@ router.post("/comment",
     comments.createComment);
 
 
+router.patch("/update/:commentId",
+    authenticationMiddeware(),
+    cloudFileUpload({
+        validation: fileValidation.image,
+        storageApproach: StorageEnum.disk
+    }).single("image"),
+    validationMiddleware(validation.updateComment),
+    comments.updateComment);
+
 router.post("/:commentId/reply",
     authenticationMiddeware(),
     cloudFileUpload({
@@ -27,7 +36,6 @@ router.post("/:commentId/reply",
     }).single("image"),
     validationMiddleware(validation.replyOnComment),
     comments.replyOnComment);
-
 
 router.post("/:commentId/like",
     authenticationMiddeware(),

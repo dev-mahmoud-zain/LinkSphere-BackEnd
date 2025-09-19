@@ -20,7 +20,7 @@ export const createComment = {
             context.addIssue({
                 code: "custom",
                 path: ["content"],
-                message: "Cannot Make Post Without Content Or image"
+                message: "Cannot Make Comment Without Content Or image"
             })
         }
 
@@ -35,6 +35,53 @@ export const createComment = {
     })
 
 }
+
+
+export const updateComment = {
+
+    params: z.strictObject({
+        postId: generalFields.id,
+        commentId: generalFields.id
+    }),
+
+    body: z.strictObject({
+
+        content: z.string().min(2).max(50000).optional(),
+        attachment: generalFields.file(fileValidation.image).optional(),
+        tags: z.array(generalFields.id).max(10).optional(),
+        removeAttachment: z.string().optional()
+
+    }).superRefine((data, context) => {
+
+        if (!data) {
+            context.addIssue({
+                code: "custom",
+                path: ["content"],
+                message: "Cannot Update Comment Without Any Updated Data"
+            })
+        }
+
+        if (data.tags?.length && data.tags.length !== [...new Set(data.tags)].length) {
+            context.addIssue({
+                code: "custom",
+                path: ["tags"],
+                message: "Duplicated Tagged Users"
+            })
+        }
+
+
+        if (data.attachment && data.removeAttachment) {
+            context.addIssue({
+                code: "custom",
+                path: ["attachment"],
+                message: "Cannot Send attachment with removeAttachment"
+            })
+        }
+
+    })
+
+}
+
 
 export const deleteComment = {
     params: createComment.params.extend({

@@ -3,7 +3,7 @@ import { succsesResponse } from "../../utils/response/succses.response";
 import { PostRepository, UserRepository, CommentRepository } from "../../DataBase/repository";
 import { UserModel, PostModel, CommentModel, AllowCommentsEnum, HPostDucment, CommentFlagEnum } from "../../DataBase/models";
 import { BadRequestException, NotFoundException } from "../../utils/response/error.response";
-import { I_CreateCommentInputs, I_ReplyOnCommentInputs } from "./comments.dto";
+import { I_CreateCommentInputs, I_ReplyOnCommentInputs, I_UpdateCommentInputs } from "./comments.dto";
 import { postAvailability } from "../003-posts";
 import { deleteFile, uploadFile } from "../../utils/multer/s3.config";
 import { Types } from "mongoose";
@@ -91,6 +91,117 @@ export class Comments {
 
     }
 
+    updateComment = async (req: Request, res: Response): Promise<Response> => {
+
+        const { tags, attachment, removeAttachment }: I_UpdateCommentInputs = req.body;
+        const { postId, commentId } = req.params as unknown as {
+            postId: Types.ObjectId,
+            commentId: Types.ObjectId
+        }
+        const userId = req.user?._id as unknown as Types.ObjectId;
+
+        const post = await this.postExists(postId, req) as HPostDucment;
+
+        if (!post) {
+            throw new NotFoundException("Post Not Found Or Cannot Update Comment")
+        }
+
+        const comment = await this.commentModel.findOne({
+            filter: {
+                _id: commentId,
+                postId,
+            }
+        });
+
+        if (!comment) {
+            throw new NotFoundException("Comment Not Found");
+        }
+
+        if (!comment.createdBy.equals(userId)) {
+            throw new NotFoundException("Only Creator Can Edit This Comment");
+        }
+
+        if (
+            tags?.length && (await this.userModel.find({
+                filter: {
+                    _id: { $in: tags }
+                }
+            })).data.length !== tags.length
+        ) {
+            throw new NotFoundException("Some Mentions Users Not Exist")
+        }
+
+        if (tags?.includes(userId.toString())) {
+            throw new BadRequestException("User Cannot Mention Himself")
+        }
+
+        let updatedComment;
+        let attachmentKey: string = "";
+
+        if (removeAttachment) {
+
+            if (comment.attachment) {
+                await deleteFile({ Key: comment.attachment });
+            }
+            else {
+                throw new BadRequestException("No Attachment For This Comment");
+            }
+
+
+            updatedComment = await this.commentModel.findOneAndUpdate({
+                filter: {
+                    _id: commentId,
+                    createdBy: userId
+                },
+                updateData: {
+                    ...req.body,
+                    tags,
+                    $unset: {
+                        attachment: 1
+                    }
+                }
+            })
+        }
+        else {
+
+            if (attachment) {
+                if (comment.attachment) {
+                    await deleteFile({ Key: comment.attachment });
+                }
+                attachmentKey = await uploadFile({
+                    file: attachment as Express.Multer.File,
+                    path: `users/${postId}/posts/comments/${commentId}`
+                });
+            }
+            updatedComment = await this.commentModel.findOneAndUpdate({
+                filter: {
+                    _id: commentId,
+                    createdBy: userId
+                },
+                updateData: {
+                    ...req.body,
+                    attachment: attachmentKey || comment.attachment,
+                    tags,
+                }
+            })
+        }
+
+
+        if (!updatedComment) {
+            if (attachment) {
+                await deleteFile({ Key: attachmentKey })
+            }
+            throw new BadRequestException("Fail To Create Comment");
+        }
+
+        return succsesResponse({
+            res, statusCode: 201,
+            info: "Comment Updated Succses",
+            data: { commentId: comment._id }
+        });
+
+    }
+
     replyOnComment = async (req: Request, res: Response): Promise<Response> => {
 
         const { tags, attachment }: I_ReplyOnCommentInputs = req.body;
@@ -100,7 +211,9 @@ export class Comments {
             commentId: Types.ObjectId
         };
 
-        if (!await this.postExists(postId, req)) {
+        const post = await this.postExists(postId, req) as HPostDucment
+
+        if (!post) {
             throw new BadRequestException("Post Not Found");
         }
 
@@ -130,7 +243,6 @@ export class Comments {
         }
 
         let attachmentKey: string = "";
-        const post = comment.postId as Partial<HPostDucment>;
 
         if (attachment) {
             attachmentKey = await uploadFile({
@@ -138,6 +250,7 @@ export class Comments {
                 path: `users/${post.createdBy}/posts/comments/${post.assetsFolderId}`
             });
         }
+
 
         const [reply] = await this.commentModel.create({
             data: [{
@@ -225,21 +338,42 @@ export class Comments {
             filter: {
                 _id: commentId,
                 postId,
-                createdBy:userId
+                createdBy: userId
             }
         })
 
-        if(!comment){
+        if (!comment) {
             throw new BadRequestException("Comment Not Exist Or Not Authorized To Remove")
         }
 
-        // Delete Related Replys
-        if(comment.flag === CommentFlagEnum.comment){
+
+        if (comment.flag === CommentFlagEnum.comment) {
+
+            const { data } = await this.commentModel.find({
+                filter: {
+                    postId,
+                    commentId,
+                    flag: CommentFlagEnum.reply,
+                    attachment: { $exists: true }
+                }
+            })
+
+            // Delete Replys Attachments
+            if (data.length) {
+                await Promise.all(
+                    data
+                        .filter((reply) => reply.attachment)
+                        .map((reply) => deleteFile({ Key: reply.attachment! }))
+                );
+            }
+
+            // Delete Replys
             await this.commentModel.deleteMany({
                 postId,
                 commentId,
-                flag:CommentFlagEnum.reply,
+                flag: CommentFlagEnum.reply,
             })
+
         }
 
         return succsesResponse({
