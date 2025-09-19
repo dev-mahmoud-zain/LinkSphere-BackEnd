@@ -91,6 +91,37 @@ export class Comments {
 
     }
 
+    getComment = async (req: Request, res: Response): Promise<Response> => {
+
+        const { commentId, postId } = req.params as unknown as {
+            commentId: Types.ObjectId,
+            postId: Types.ObjectId
+        };
+
+        if (!await this.postExists(postId, req)) {
+            throw new BadRequestException("Post Not Exist");
+        }
+
+        const comment = await this.commentModel.findOne({
+            filter: { _id: commentId },
+            options: {
+                populate: [{
+                    path: "lastReply",
+                }]
+            }
+        })
+
+        if (!comment) {
+            throw new BadRequestException("Comment Not Exist");
+        }
+
+        return succsesResponse({
+            res, statusCode: 200,
+            data: { comment }
+        });
+
+    }
+
     updateComment = async (req: Request, res: Response): Promise<Response> => {
 
         const { tags, attachment, removeAttachment }: I_UpdateCommentInputs = req.body;

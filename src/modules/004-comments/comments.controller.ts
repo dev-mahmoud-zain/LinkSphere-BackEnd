@@ -19,6 +19,12 @@ router.post("/comment",
     comments.createComment);
 
 
+router.get("/comment/:commentId",
+    authenticationMiddeware(),
+    validationMiddleware(validation.getComment),
+    comments.getComment);
+
+
 router.patch("/update/:commentId",
     authenticationMiddeware(),
     cloudFileUpload({

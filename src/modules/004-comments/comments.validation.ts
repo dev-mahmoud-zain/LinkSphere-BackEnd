@@ -89,6 +89,13 @@ export const deleteComment = {
     }),
 }
 
+export const getComment = {
+    params: z.strictObject({
+        postId: generalFields.id,
+        commentId: generalFields.id
+    })
+}
+
 export const replyOnComment = {
     params: deleteComment.params.extend({}),
     body: createComment.body.extend({})
