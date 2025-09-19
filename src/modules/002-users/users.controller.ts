@@ -33,6 +33,31 @@ router.delete("/profile-cover-images",
     usersService.deleteCoverImages);
 
 
+
+// =========================  Friendship Management ============================
+
+
+router.post("/friend-requst/:userId",
+    authenticationMiddeware(),
+    validationMiddleware(usersValidation.sendFriendRequst),
+    usersService.sendFriendRequst);
+
+router.patch("/accept-friend-requst/:requstId",
+    authenticationMiddeware(),
+    validationMiddleware(usersValidation.acceptFriendRequst),
+    usersService.acceptFriendRequst);
+
+router.delete("/cancel-friend-requst/:requstId",
+    authenticationMiddeware(),
+    validationMiddleware(usersValidation.cancelFriendRequst),
+    usersService.cancelFriendRequst);
+
+router.delete("/remove-friend/:userId",
+    authenticationMiddeware(),
+    validationMiddleware(usersValidation.removeFriend),
+    usersService.removeFriend);
+
+
 // ========================= User Information Updates ==========================
 
 router.patch("/update-basic-info",
@@ -75,8 +100,23 @@ router.patch("/un-freez/me",
     usersService.unFreezAccountByAccountAuther);
 
 router.delete("/delete/:userId",
-    authorizationMiddeware(endPoints.freezAccount),
+    authorizationMiddeware(endPoints.deleteAccount),
     validationMiddleware(usersValidation.deleteAccount),
     usersService.deleteAccount);
+
+
+
+
+
+
+
+
+// ============================= Admin Control ===============================
+
+
+router.get("/change-role/:id",
+    authorizationMiddeware(endPoints.changeRole),
+    validationMiddleware(usersValidation.changeRole),
+    usersService.changeRole);
 
 export default router;

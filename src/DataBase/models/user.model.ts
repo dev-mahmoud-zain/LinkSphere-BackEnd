@@ -8,7 +8,8 @@ export enum GenderEnum {
 }
 export enum RoleEnum {
     user = "user",
-    admin = "admin"
+    admin = "admin",
+    suberAdmin = "suber-admin"
 }
 export enum ProviderEnum {
     system = "system",

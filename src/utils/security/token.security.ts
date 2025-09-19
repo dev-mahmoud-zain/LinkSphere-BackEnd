@@ -53,6 +53,7 @@ export class TokenService {
 
         switch (role) {
             case RoleEnum.admin:
+            case RoleEnum.suberAdmin:
                 SignatureLevel = SignatureLevelEnum.System;
                 break;
             default:

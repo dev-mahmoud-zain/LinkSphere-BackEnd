@@ -39,12 +39,12 @@ class AuthenticationServices {
         let { userName, email, password, gender, phone }: I_SignupBodyInputs = req.body.validData;
 
 
-        const userExsist = await this.userModel.findOne({
+        const userExists = await this.userModel.findOne({
             filter: { email }, select: "_id userName email", options: { lean: true }
         })
 
-        if (userExsist) {
-            throw new ConflictException("Email Alredy Exsists Try To Login", {
+        if (userExists) {
+            throw new ConflictException("Email Alredy Exists Try To Login", {
                 issues: {
                     path: "email",
                     value: email
@@ -83,7 +83,7 @@ class AuthenticationServices {
         })
 
         if (!user) {
-            throw new NotFoundException("Email Is Not Exsist")
+            throw new NotFoundException("Email Is Not Exists")
         }
 
         if (user.confirmedAt) {
@@ -177,7 +177,7 @@ class AuthenticationServices {
         const OTPCode: string = generateOTP();
 
         await this.userModel.updateOne({ email }, {
-            OTPReSendCount: user.OTPReSendCount ? user.OTPReSendCount + 1 : 1,
+            OTPReSendCount: user?.OTPReSendCount ? user.OTPReSendCount + 1 : 1,
             confirmEmailOTP: await generateHash(OTPCode),
             confirmEmailSentTime: new Date()
         })

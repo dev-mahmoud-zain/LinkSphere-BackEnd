@@ -153,19 +153,19 @@ export class PostService {
                 );
             }
 
-            let notExsitsKeys: { index: number, key: string }[] = [];
+            let notExistsKeys: { index: number, key: string }[] = [];
 
             req.body.removedAttachments.forEach((key: string, index: number) => {
                 if (!post.attachments?.includes(key)) {
-                    notExsitsKeys.push({ index, key });
+                    notExistsKeys.push({ index, key });
                 }
             });
 
-            if (notExsitsKeys.length) {
+            if (notExistsKeys.length) {
                 throw new BadRequestException("Wrong Attachments Keys", {
                     issues: {
                         path: "removedAttachments",
-                        notExsitsKeys
+                        notExistsKeys
                     }
                 });
             }

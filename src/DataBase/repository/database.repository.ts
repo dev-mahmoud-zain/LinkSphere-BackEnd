@@ -30,7 +30,7 @@ export abstract class DataBaseRepository<TDocument> {
     }: {
         filter?: RootFilterQuery<TDocument>,
         select?: ProjectionType<TDocument> | null,
-        options?: QueryOptions<TDocument> | null
+        options?: QueryOptions<TDocument> & { populate?: any } | null
     }): Promise<
         HydratedDocument<FlattenMaps<TDocument>>
         | HydratedDocument<TDocument>
@@ -41,6 +41,9 @@ export abstract class DataBaseRepository<TDocument> {
             doc.lean(options.lean)
         }
 
+        if (options?.populate) {
+            doc.populate(options.populate);
+        }
         return await doc.exec();
     }
 
@@ -150,7 +153,27 @@ export abstract class DataBaseRepository<TDocument> {
     async deleteOne(
         filter: FilterQuery<TDocument>
     ) {
+
         return this.model.deleteOne(filter)
     }
+
+    async findOneAndDelete(
+        {
+            filter,
+            options
+        }: {
+            filter?: RootFilterQuery<TDocument>,
+            options?: QueryOptions<TDocument> | null
+        }
+    ): Promise<HydratedDocument<TDocument> | null> {
+
+        const deletedDoc = await this.model.findOneAndDelete(
+            filter,
+            options || {}
+        ).exec();
+
+        return deletedDoc;
+    }
+
 
 }

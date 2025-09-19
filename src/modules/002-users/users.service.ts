@@ -7,15 +7,15 @@ import {
     uploadFile,
     uploadFiles
 } from "../../utils/multer/s3.config";
-import { ApplicationException, BadRequestException, NotFoundException } from "../../utils/response/error.response";
-import { CommentRepository, PostRepository, UserRepository } from "../../DataBase/repository";
+import { ApplicationException, BadRequestException, ConflictException, NotFoundException } from "../../utils/response/error.response";
+import { CommentRepository, FriendRequstRepository, PostRepository, UserRepository } from "../../DataBase/repository";
 import { JwtPayload } from "jsonwebtoken";
 import { succsesResponse } from "../../utils/response/succses.response";
 import { IChangePassword } from "../001-auth/dto/auth.dto";
 import { compareHash, generateHash } from "../../utils/security/hash.security";
 import { generateOTP } from "../../utils/security/OTP";
 import { emailEvent } from "../../utils/email/email.events";
-import { CommentModel, PostModel, HUserDoucment, UserModel } from "../../DataBase/models";
+import { CommentModel, PostModel, HUserDoucment, UserModel, RoleEnum, FriendRequstModel } from "../../DataBase/models";
 import { Types } from "mongoose";
 
 class UserServise {
@@ -23,15 +23,20 @@ class UserServise {
     private userModel = new UserRepository(UserModel);
     private postModel = new PostRepository(PostModel);
     private commentModel = new CommentRepository(CommentModel);
+    private freindRequstModel = new FriendRequstRepository(FriendRequstModel);
 
 
-    private unfreezUser = async (userId :Types.ObjectId) => {
+    private unfreezUser = async (userId: Types.ObjectId, restoredBy: Types.ObjectId) => {
 
         // Un UnFreez User
         await this.userModel.findOneAndUpdate({
             filter: {
                 _id: userId,
             }, updateData: {
+                set: {
+                    restoredAt: new Date(),
+                    restoredBy
+                },
                 $unset: {
                     freezedAt: "",
                     freezedBy: ""
@@ -45,6 +50,10 @@ class UserServise {
             freezedAt: { $exists: true },
             freezedBy: { $exists: true },
         }, {
+            set: {
+                restoredAt: new Date(),
+                restoredBy
+            },
             $unset: {
                 freezedAt: "",
                 freezedBy: ""
@@ -56,6 +65,10 @@ class UserServise {
             freezedAt: { $exists: true },
             freezedBy: { $exists: true },
         }, {
+            set: {
+                restoredAt: new Date(),
+                restoredBy
+            },
             $unset: {
                 freezedAt: "",
                 freezedBy: ""
@@ -69,31 +82,69 @@ class UserServise {
     // ============================ Profile Management =============================
 
     profile = async (req: Request, res: Response): Promise<Response> => {
+        // const { password, twoSetupVerificationCode, twoSetupVerificationCodeExpiresAt, ...safeUser } = req.user?.toObject() as HUserDoucment;
 
-
-        const { password, twoSetupVerificationCode, twoSetupVerificationCodeExpiresAt, ...safeUser } = req.user?.toObject() as HUserDoucment;
-
-        if (safeUser.picture) {
-            const key = await getPreSigndUrl({ Key: safeUser.picture });
-            safeUser.picture = key
+        interface IFriend {
+            _id: string;
+            firstName: string;
+            lastName: string;
+            email: string;
+            gender: string;
+            picture: string;
         }
 
-        if (safeUser.coverImages) {
+        const user = await this.userModel.findOne({
+            filter: {
+                _id: req.user?._id
+            }, select: {
+                password: 0,
+                twoSetupVerification: 0,
+                twoSetupVerificationCode: 0,
+                twoSetupVerificationCodeExpiresAt: 0,
+                provider: 0,
+                createdAt: 0,
+                updatedAt: 0,
+                confirmedAt: 0
+            }, options: {
+                populate: [{
+                    path: "friends",
+                    select: "firstName lastName email gender picture"
+                }]
+            }
+        })
+
+        if (!user) {
+            throw new NotFoundException("Fail To Get Profile")
+        }
+
+        if (user.picture) {
+            const key = await getPreSigndUrl({ Key: user.picture });
+            user.picture = key
+        }
+
+        if (user.coverImages) {
             let keys = []
-            for (const Key of safeUser.coverImages) {
+            for (const Key of user.coverImages) {
                 keys.push(await getPreSigndUrl({ Key }));
             }
-            safeUser.coverImages = keys;
+            user.coverImages = keys;
         }
 
+        if (user.friends?.length) {
+            for (const friend of user.friends as unknown as IFriend[]) {
+                if (friend.picture) {
+                    const friendKey = await getPreSigndUrl({ Key: friend.picture });
+                    friend.picture = friendKey || ""
+                }
+            }
+        }
 
         return succsesResponse({
             res,
-            data: safeUser
+            data: { user }
         })
 
     }
-
 
     uploadProfilePicture = async (req: Request, res: Response): Promise<Response> => {
 
@@ -116,7 +167,7 @@ class UserServise {
 
         return succsesResponse({
             res,
-            info: "Profile Picture Uploaded Succses",
+            message: "Profile Picture Uploaded Succses",
             data: { key }
         })
 
@@ -142,7 +193,7 @@ class UserServise {
 
         return succsesResponse({
             res,
-            info: "Profile Picture Uploaded Succses",
+            message: "Profile Picture Uploaded Succses",
             data: { keys }
         })
 
@@ -169,7 +220,7 @@ class UserServise {
 
         return succsesResponse({
             res,
-            info: "Profile Picture Deleted Succses",
+            message: "Profile Picture Deleted Succses",
         })
 
 
@@ -197,10 +248,177 @@ class UserServise {
 
         return succsesResponse({
             res,
-            info: "Cover Images Deleted Succses",
+            message: "Cover Images Deleted Succses",
         })
 
     }
+
+
+
+
+    // =============================  Friendship Management ===============================
+
+    sendFriendRequst = async (req: Request, res: Response): Promise<Response> => {
+
+        const { userId } = req.params as unknown as { userId: Types.ObjectId }
+        const sendBy = req.user?._id as unknown as Types.ObjectId;
+
+        if (userId === sendBy) {
+            throw new BadRequestException("User Cannot Send Friend Requst To Himself");
+        }
+
+        if (await this.freindRequstModel.findOne({
+            filter: {
+                sendBy: { $in: [userId, sendBy] },
+                sendto: { $in: [userId, sendBy] },
+            }
+        })
+        ) {
+            throw new ConflictException("Friend Requst Alredy Exists");
+        }
+
+        if (!await this.userModel.findOne({
+            filter: { _id: userId }
+        })) {
+            throw new NotFoundException("User Not Found");
+        }
+
+        const [friendRequst] = await this.freindRequstModel.create({
+            data: [{
+                sendTo: userId,
+                sendBy
+            }]
+        }) || []
+
+        if (!friendRequst) {
+            throw new BadRequestException("Fail To Send Friend Requst");
+        }
+
+        return succsesResponse({
+            res,
+            statusCode: 201,
+            message: "Friend Requst Sent Succses",
+            data: {
+                requstId: friendRequst._id
+            }
+        })
+    }
+
+    acceptFriendRequst = async (req: Request, res: Response): Promise<Response> => {
+
+        const { requstId } = req.params as unknown as { requstId: Types.ObjectId }
+        const reseverId = req.user?._id as unknown as Types.ObjectId;
+
+        const freindRequst = await this.freindRequstModel.findOneAndUpdate({
+            filter: {
+                _id: requstId,
+                sendTo: reseverId,
+                acceptedAt: { $exists: false }
+            }, updateData: {
+                acceptedAt: new Date()
+            }
+        })
+
+        if (!freindRequst) {
+            throw new NotFoundException("Friend Requst Not Exists");
+        }
+
+
+        const accepted = await Promise.all([
+            this.userModel.updateOne({
+                _id: freindRequst.sendBy
+            }, {
+                $addToSet: { friends: reseverId }
+            }),
+
+            this.userModel.updateOne({
+                _id: reseverId
+            }, {
+                $addToSet: { friends: freindRequst.sendBy }
+            })
+        ]);
+
+        if (!accepted) {
+            throw new BadRequestException("Fail To Accept Requst")
+        }
+
+        return succsesResponse({
+            res,
+            statusCode: 200,
+            message: "Friend Requst Sent Succses",
+        })
+    }
+
+
+    cancelFriendRequst = async (req: Request, res: Response): Promise<Response> => {
+
+        const { requstId } = req.params as unknown as { requstId: Types.ObjectId }
+
+        const requst = await this.freindRequstModel.findOneAndDelete({
+            filter: {
+                _id: requstId,
+                acceptedAt: { $exists: false },
+                $or: [
+                    { sendBy: req.user?._id, },
+                    { sendTo: req.user?._id, }
+                ]
+            }
+        })
+
+        if (!requst) {
+            throw new BadRequestException("No Matched Requst");
+        }
+
+        return succsesResponse({
+            res,
+            statusCode: 200,
+            message: "Friend Requst Deleted Succses",
+        });
+
+    }
+
+    removeFriend = async (req: Request, res: Response): Promise<Response> => {
+
+        const { userId } = req.params as unknown as { userId: Types.ObjectId }
+
+        const friendExist = await this.userModel.findOne({
+            filter: {
+                _id: req.user?._id,
+                friends: { $in: userId }
+            }
+        });
+
+        if (!friendExist) {
+            throw new NotFoundException("Friend Not Found");
+        }
+
+        const removeFriend = await Promise.all([
+
+            this.userModel.findOneAndUpdate({
+                filter: { _id: req.user?._id },
+                updateData: { $pull: { friends: userId } }
+            }),
+
+            this.userModel.findOneAndUpdate({
+                filter: { _id: userId },
+                updateData: { $pull: { friends: req.user?._id } }
+            }),
+
+        ])
+
+        if (!removeFriend) {
+            throw new BadRequestException("Fail To Remove Friend");
+        }
+
+        return succsesResponse({
+            res,
+            statusCode: 200,
+            message: "Friend Removed Succses",
+        });
+
+    }
+
+
 
     // ========================= User Information Updates ==========================
 
@@ -275,7 +493,7 @@ class UserServise {
 
         return succsesResponse({
             res,
-            info: "Data Updated Succses",
+            message: "Data Updated Succses",
         })
 
     }
@@ -302,7 +520,7 @@ class UserServise {
 
         return succsesResponse({
             res,
-            info: "Verify Your Email",
+            message: "Verify Your Email",
         })
 
     }
@@ -346,7 +564,7 @@ class UserServise {
 
         return succsesResponse({
             res,
-            info: "Verify Your Email",
+            message: "Verify Your Email",
         })
 
     }
@@ -376,7 +594,7 @@ class UserServise {
 
         return succsesResponse({
             res,
-            info: "Your Password Changed Succses"
+            message: "Your Password Changed Succses"
         })
 
 
@@ -448,7 +666,7 @@ class UserServise {
 
         return succsesResponse({
             res,
-            info: "Account Freezed Succses",
+            message: "Account Freezed Succses",
         })
 
     }
@@ -457,15 +675,15 @@ class UserServise {
 
         const adminId = req.tokenDecoded?._id;
         let { userId } = req.params as unknown as {
-            userId :Types.ObjectId
+            userId: Types.ObjectId
         };
 
         // UnFreezAccount
-        this.unfreezUser(userId)
+        this.unfreezUser(userId, adminId)
 
         return succsesResponse({
             res,
-            info: "Account Unfreezed Succses",
+            message: "Account Unfreezed Succses",
         })
 
     }
@@ -503,11 +721,11 @@ class UserServise {
 
         const userId = user._id as unknown as Types.ObjectId;
 
-       await this.unfreezUser(userId);
+        await this.unfreezUser(userId, userId);
 
         return succsesResponse({
             res,
-            info: "Account Unfreezed Succses",
+            message: "Account Unfreezed Succses",
         })
 
     }
@@ -517,7 +735,6 @@ class UserServise {
         const { userId } = req.params;
 
         const user = await this.userModel.findOne({ filter: { _id: userId } });
-
 
         if (!user) {
             throw new NotFoundException("User Not Found")
@@ -537,7 +754,45 @@ class UserServise {
 
         return succsesResponse({
             res,
-            info: "Account Deleted Succses",
+            message: "Account Deleted Succses",
+        })
+
+    }
+
+
+
+    // ============================= Admin Control ===============================
+
+
+    changeRole = async (req: Request, res: Response): Promise<Response> => {
+
+        const { id } = req.params as unknown as { id: Types.ObjectId };
+        const { role } = req.body as unknown as { role: RoleEnum };
+
+        let denyRoles: RoleEnum[] = [role, RoleEnum.suberAdmin];
+
+        if (req.user?.role === RoleEnum.admin) {
+            denyRoles.push(RoleEnum.admin);
+        }
+
+
+
+        const user = await this.userModel.findOneAndUpdate({
+            filter: {
+                _id: id,
+                role: { $nin: denyRoles }
+            }, updateData: {
+                role
+            }
+        })
+
+        if (!user) {
+            throw new BadRequestException("Fail To Change Role");
+        }
+
+        return succsesResponse({
+            res,
+            message: "Role Updated Succses",
         })
 
     }

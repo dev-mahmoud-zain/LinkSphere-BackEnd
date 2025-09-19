@@ -1,8 +1,6 @@
-// Import Express And Express Types
 import express from "express";
 import type { Request, Response } from "express";
 
-// Import Third Party MiddleWare
 import cors from "cors";
 import { rateLimit } from "express-rate-limit";
 import helmet from "helmet";
@@ -12,21 +10,10 @@ import { resolve } from "node:path";
 import { config } from "dotenv";
 config({ path: resolve("./config/.env.development") })
 
-// Import Modules Routers
-// import authRouter from "./modules/001-auth/auth.controller";
 
 import { authRouter, postsRouter, usersRouter } from "./modules/";
-
-
-
-
-
-
 import { glopalErrorHandler } from "./utils/response/error.response";
 import connectToDataBase from "./DataBase/DB_Connection";
-
-
-
 
 // App Start Point
 export default async function bootstrap(): Promise<void> {
